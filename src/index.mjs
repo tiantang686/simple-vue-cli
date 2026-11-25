@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { Command, Option } from 'commander';
-import { createWebpackProject } from './webpack-template.mjs';
+import { parsePort, selectProjectOptions } from './project-options.mjs';
+import { createProject } from './project-template.mjs';
 
 const packageFile = fileURLToPath(new URL('../package.json', import.meta.url));
 const { version } = JSON.parse(readFileSync(packageFile, 'utf8'));
@@ -46,42 +46,8 @@ function runProject(script, defaultMode, options) {
     if (config.bundler === 'webpack') args.push('--env', `appMode=${mode}`);
     else args.push('--mode', mode);
     if (options.host !== undefined) args.push('--host', options.host);
-    if (options.port !== undefined) args.push('--port', options.port);
+    if (options.port !== undefined) args.push('--port', String(parsePort(options.port)));
     runNpm(args);
-}
-
-async function selectOption(prompt, choices, labels) {
-    while (true) {
-        const answer = (await prompt.question(`请选择${labels}（${choices.map((choice, index) => `${index + 1}. ${choice}`).join(' / ')}，默认 1）：`)).trim().toLowerCase();
-        if (answer === '') return choices[0];
-        if (choices.includes(answer)) return answer;
-        const index = choices.findIndex((_, i) => String(i + 1) === answer);
-        if (index !== -1) return choices[index];
-        console.log('请输入选项编号或名称。');
-    }
-}
-
-async function selectTemplate(options) {
-    const [templateFramework, templateLanguage = 'js'] = options.template?.split('-') ?? [];
-    if (options.template && ((options.framework && options.framework !== templateFramework)
-        || (options.language && options.language !== templateLanguage))) {
-        throw new Error('--template 与 --framework 或 --language 选项冲突。');
-    }
-    let framework = options.framework ?? templateFramework;
-    let language = options.language ?? (options.template ? templateLanguage : undefined);
-    let bundler = options.bundler;
-    if (process.stdin.isTTY && process.stdout.isTTY && options.interactive && (!framework || !language || !bundler)) {
-        const prompt = createInterface({ input: process.stdin, output: process.stdout });
-        prompt.on('SIGINT', () => { console.log('\n已取消初始化。'); process.exit(130); });
-        try {
-            framework ??= await selectOption(prompt, ['vue', 'react'], '框架');
-            language ??= await selectOption(prompt, ['js', 'ts'], '语言');
-            bundler ??= await selectOption(prompt, ['vite', 'webpack'], '构建工具');
-        } finally {
-            prompt.close();
-        }
-    }
-    return { framework: framework ?? 'vue', language: language ?? 'js', bundler: bundler ?? 'vite' };
 }
 
 program.name('simple-cli').description('创建、开发和构建 Vue 或 React 项目').version(version);
@@ -93,6 +59,13 @@ program.command('init <name>')
     .addOption(new Option('-f, --framework <framework>', '项目框架').choices(['vue', 'react']))
     .addOption(new Option('-l, --language <language>', '源码语言').choices(['js', 'ts']))
     .addOption(new Option('-b, --bundler <bundler>', '构建工具').choices(['vite', 'webpack']))
+    .addOption(new Option('--vue-version <major>', 'Vue 版本').choices(['2', '3']))
+    .option('--react-version <version>', '完整 React 版本号，例如 18.3.1')
+    .addOption(new Option('--router <enabled>', '是否启用路由').choices(['yes', 'no']))
+    .addOption(new Option('--state <library>', '状态管理').choices(['none', 'vuex', 'pinia', 'redux', 'zustand']))
+    .addOption(new Option('--css <syntax>', '样式预处理器').choices(['css', 'sass', 'less']))
+    .addOption(new Option('--quality <tools>', '检查与格式化工具').choices(['both', 'eslint', 'prettier', 'none']))
+    .option('-p, --port <port>', '开发服务器默认端口')
     .option('--no-interactive', '跳过提问，未指定的选项使用默认值')
     .option('--no-install', '跳过依赖安装')
     .action(async (name, options) => {
@@ -100,7 +73,8 @@ program.command('init <name>')
             throw new Error('项目名须以小写字母或数字开头，只能包含小写字母、数字、连字符和下划线，最多 100 字符。');
         }
         if (existsSync(name)) throw new Error(`目标已存在：${name}`);
-        const { framework, language, bundler } = await selectTemplate(options);
+        const settings = await selectProjectOptions(options);
+        const { framework, language, bundler } = settings;
         const template = language === 'ts' ? `${framework}-ts` : framework;
         try {
             mkdirSync(name);
@@ -108,14 +82,8 @@ program.command('init <name>')
             if (error.code === 'EEXIST') throw new Error(`目标已存在：${name}`);
             throw error;
         }
-        if (bundler === 'webpack') {
-            createWebpackProject(name, name, framework, language);
-        } else if (!runNpm(['exec', '--yes', '--package=create-vite@7', '--', 'create-vite',
-            name, '--template', template, '--no-interactive', '--no-install'])) {
-            console.error(`初始化失败，请检查目录 ${name} 和上方的 npm 错误。`);
-            return;
-        }
-        writeFileSync(join(name, configFile), JSON.stringify({ template, bundler }, null, 2) + '\n');
+        createProject(name, name, settings);
+        writeFileSync(join(name, configFile), JSON.stringify({ ...settings, template, bundler }, null, 2) + '\n');
         if (options.install && !runNpm(['install'], name)) {
             console.error(`项目文件已生成，可进入 ${name} 后重试 npm install。`);
             return;
