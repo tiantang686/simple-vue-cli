@@ -1,0 +1,15 @@
+{
+    "compileOnSave":true,
+    "compilerOptions":{
+        "esModuleInterop": true,
+        "allowJs": true,
+        "types": [],
+        "declaration": true,
+        "emitDeclarationOnly": true,
+        "target": "es2017",
+        "rootDir": "./src",
+        "outDir":"lib",
+        "declarationDir":"lib/types"
+    },
+    "include":["./src/**/*"]
+}
