@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createAppFiles, usesClassicReact } from './app-template.mjs';
 import { webpackTemplate } from './webpack-template.mjs';
 
@@ -10,30 +10,42 @@ function viteTemplate(options, extension) {
     const config = `import { fileURLToPath, URL } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import frameworkPlugin from '${plugin}';
+import proxyTargets from './proxy.config.cjs';
 
 export default defineConfig(({ command, mode }) => {
+    // 按模式加载公开环境变量。command 用于区分开发服务器和打包。
     const env = loadEnv(mode, process.cwd(), 'VITE_');
     const serving = command === 'serve';
     return {
+        // 部署到子目录时，在 .env.production 中设置 VITE_BASE。
         base: env.VITE_BASE || '/',
+        // 所选框架的插件负责编译 JSX 或 Vue 单文件组件。
         plugins: [frameworkPlugin(${usesClassicReact(reactVersion) ? "{ jsxRuntime: 'classic' }" : ''})],
         resolve: {
+            // 将 @/ 开头的导入解析到项目的 src 目录。
             alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
         },
         server: {
+            // 仅监听本机。端口被占用时直接提示，可用 start --port 覆盖。
             host: 'localhost',
             port: ${port},
             strictPort: true,
             open: false,
-            // proxy: { '/api': 'http://localhost:3000' },
+            // 按前缀转发到不同后端，保留完整请求路径。
+            proxy: Object.fromEntries(Object.entries(proxyTargets).map(([prefix, target]) => [
+                prefix, { target: String(target), changeOrigin: true },
+            ])),
         },
         define: {
+            // 编译期替换公开常量，不要在这里放密钥。
             __APP_MODE__: JSON.stringify(mode),
         },
         css: {
+            // 开发环境保留样式的源码位置。
             devSourcemap: serving,${css === 'sass' ? "\n            preprocessorOptions: { scss: { api: 'modern-compiler' } }," : css === 'less' ? '\n            preprocessorOptions: { less: { javascriptEnabled: false } },' : ''}
         },
         build: {
+            // 发布构建默认压缩。development 模式保留源码映射。
             outDir: 'dist',
             assetsDir: 'assets',
             sourcemap: !serving && mode === 'development',
@@ -48,7 +60,6 @@ export default defineConfig(({ command, mode }) => {
         devDependencies: { vite: '^7.0.0', [plugin]: pluginVersion },
         files: {
             ['vite.config.' + language]: config,
-            '.env.example': '# VITE_BASE=/my-app/\n',
         },
         script: '<script type="module" src="/src/main.' + extension + '"></script>',
     };
@@ -71,6 +82,7 @@ function addQualityTools(options, devDependencies, scripts, files) {
             + '\nexport default [\n    js.configs.recommended,\n'
             + (ts ? '    ...tseslint.configs.recommended,\n' : '')
             + (vue ? "    ...vue.configs['flat/" + (vueVersion === '2' ? 'vue2-' : '') + "essential'],\n" : '')
+            + (vue ? "    { files: ['src/pages/**/index.vue'], rules: { 'vue/multi-word-component-names': ['error', { ignores: ['index'] }] } },\n" : '')
             + "    { files: ['src/**/*.{js,jsx,ts,tsx,vue}'], languageOptions: { globals: globals.browser } },\n"
             + (!vue ? "    { files: ['**/*.{jsx,tsx}'], languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },\n"
                 + "      plugins: { react }, rules: { 'react/jsx-uses-vars': 'error'"
@@ -124,6 +136,9 @@ export function createProject(directory, name, options) {
     files['index.html'] = '<!doctype html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1">\n    <title>' + name + '</title>\n</head>\n<body>\n    <div id="app"></div>\n    ' + (template.script ?? '') + '\n</body>\n</html>\n';
     files['.gitignore'] = 'node_modules/\ndist/\n.env.local\n.env.*.local\n';
     if (language === 'js') files['jsconfig.json'] = JSON.stringify({ compilerOptions: { paths: { '@/*': ['./src/*'] } }, include: ['src'] }, null, 4) + '\n';
-    mkdirSync(join(directory, 'src'));
-    for (const [file, content] of Object.entries(files)) writeFileSync(join(directory, file), content);
+    for (const [file, content] of Object.entries(files)) {
+        const target = join(directory, file);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, content);
+    }
 }

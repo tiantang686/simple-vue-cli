@@ -32,6 +32,7 @@ export function webpackTemplate(options, extension) {
     const config = `const path = require('node:path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const proxyTargets = require('./proxy.config.cjs');
 ${vue ? legacyVue ? "const VueLoaderPlugin = require('vue-loader/lib/plugin');\n" : "const { VueLoaderPlugin } = require('vue-loader');\n" : ''}
 module.exports = (env, argv) => {
     const mode = env.appMode || argv.mode;
@@ -54,7 +55,11 @@ ${styleRule}            ],
             new webpack.DefinePlugin({ 'process.env.APP_MODE': JSON.stringify(mode)${vue && !legacyVue ? ', __VUE_OPTIONS_API__: true, __VUE_PROD_DEVTOOLS__: false, __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false' : ''} }),
 ${vue ? '            new VueLoaderPlugin(),\n' : ''}        ],
         dotenv: { prefix: 'WEBPACK_', template: ['.env', '.env.local', '.env.' + mode, '.env.' + mode + '.local'] },
-        devServer: { host: 'localhost', port: ${port}, hot: ${vue}, liveReload: true, historyApiFallback: true },
+        devServer: {
+            host: 'localhost', port: ${port}, hot: ${vue}, liveReload: true, historyApiFallback: true,
+            // 开发时按前缀转发。后端地址集中维护在 proxy.config.cjs。
+            proxy: Object.entries(proxyTargets).map(([prefix, target]) => ({ context: [prefix], target, changeOrigin: true })),
+        },
     };
 };
 `;

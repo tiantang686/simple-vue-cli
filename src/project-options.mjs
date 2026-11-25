@@ -54,7 +54,7 @@ export async function selectProjectOptions(options) {
         }
         const vueVersion = framework === 'vue' ? await choose(options.vueVersion, 'Vue 主版本', ['3', '2']) : undefined;
         const reactVersion = framework === 'react' ? await ask(options.reactVersion, 'React 版本', '19.3.1', parseReactVersion) : undefined;
-        const router = (await choose(options.router, framework === 'vue' ? '启用 Vue Router' : '启用 React Router', ['no', 'yes'])) === 'yes';
+        const router = (await choose(options.router, framework === 'vue' ? '启用 Vue Router' : '启用 React Router', ['yes', 'no'])) === 'yes';
         const states = framework === 'react' ? ['redux', 'zustand', 'none'] : vueVersion === '2' ? ['none', 'vuex'] : ['none', 'pinia', 'vuex'];
         const state = await choose(options.state, '状态管理', states);
         const css = await choose(options.css, 'CSS 预处理器', ['css', 'sass', 'less']);
