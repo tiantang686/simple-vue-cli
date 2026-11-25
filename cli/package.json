@@ -7,7 +7,7 @@
     "simple-cli": "index.ts"
   },
   "scripts": {
-    "dev": "npx tsc && babel src --extensions '.ts,.js' --watch --out-dir lib",
+    "dev": "tsc && babel src --extensions .ts,.js --watch --out-dir lib",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -16,6 +16,7 @@
     "@babel/cli": "^7.27.0",
     "@babel/core": "^7.26.10",
     "@babel/preset-env": "^7.26.9",
+    "commander": "^15.1.0",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^1.1.8",
